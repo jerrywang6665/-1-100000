@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>English Number Ear Training</title>
+    <style>
+        :root {
+            --primary: #4361ee;
+            --secondary: #3f37c9;
+        }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #f8f9fa;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .training-box {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            width: 100%;
+            max-width: 500px;
+            padding: 40px;
+            text-align: center;
+        }
+        .mode-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            justify-content: center;
+        }
+        .mode-btn {
+            padding: 10px 20px;
+            border: 2px solid #e9ecef;
+            background: white;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 600;
+        }
+        .mode-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+        .control-panel {
+            margin: 30px 0;
+        }
+        .slider-container {
+            margin: 25px 0;
+        }
+        .interval-slider {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: #e9ecef;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        .interval-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+        }
+        .main-btn {
+            padding: 16px 40px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px rgba(67, 97, 238, 0.3);
+        }
+        .main-btn:hover {
+            background: var(--secondary);
+            transform: translateY(-2px);
+        }
+        .main-btn:active {
+            transform: translateY(0);
+        }
+        .hidden {
+            display: none;
+        }
+        #resultLog {
+            margin-top: 30px;
+            text-align: left;
+            max-height: 200px;
+            overflow-y: auto;
+            padding: 15px;
+            background: #f1f3f5;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="training-box">
+        <h1>Number Listening Drill</h1>
+        <p style="color: #6c757d">Train your ears to recognize English numbers</p>
+        
+        <div class="mode-selector">
+            <button class="mode-btn active" data-range="100">Beginner (1-100)</button>
+            <button class="mode-btn" data-range="1000">Intermediate (1-1,000)</button>
+            <button class="mode-btn" data-range="100000">Advanced (1-100,000)</button>
+        </div>
+
+        <div class="control-panel">
+            <div class="slider-container">
+                <label for="interval">Speed: <span id="intervalValue">3</span>s间隔</label>
+                <input type="range" id="interval" class="interval-slider" min="1" max="5" step="0.5" value="3">
+            </div>
+            <button id="startBtn" class="main-btn">Start Training</button>
+            <button id="stopBtn" class="main-btn hidden">Stop</button>
+        </div>
+
+        <div id="resultLog" class="hidden">
+            <h3>Recent Numbers:</h3>
+            <ul id="logList"></ul>
+        </div>
+    </div>
+
+    <script>
+        // 语音引擎配置
+        const speechConfig = {
+            rate: 0.9,
+            pitch: 1,
+            lang: 'en-US'
+        };
+
+        // 训练系统
+        const trainer = {
+            isRunning: false,
+            intervalId: null,
+            currentMode: 100,
+            numbersHistory: [],
+            
+            init() {
+                this.setupEventListeners();
+                this.loadVoices();
+            },
+            
+            setupEventListeners() {
+                // 模式选择
+                document.querySelectorAll('.mode-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        document.querySelector('.mode-btn.active').classList.remove('active');
+                        btn.classList.add('active');
+                        this.currentMode = parseInt(btn.dataset.range);
+                    });
+                });
+                
+                // 间隔调节
+                document.getElementById('interval').addEventListener('input', (e) => {
+                    document.getElementById('intervalValue').textContent = e.target.value;
+                });
+                
+                // 开始/停止
+                document.getElementById('startBtn').addEventListener('click', () => this.startTraining());
+                document.getElementById('stopBtn').addEventListener('click', () => this.stopTraining());
+            },
+            
+            loadVoices() {
+                // 优先选择优质发音人声
+                speechSynthesis.onvoiceschanged = () => {
+                    const voices = speechSynthesis.getVoices();
+                    const preferredVoices = [
+                        'Google US English',
+                        'Microsoft David - English (United States)',
+                        'Alex'
+                    ];
+                    
+                    for (const voiceName of preferredVoices) {
+                        const voice = voices.find(v => v.name.includes(voiceName));
+                        if (voice) {
+                            speechConfig.voice = voice;
+                            break;
+                        }
+                    }
+                };
+            },
+            
+            startTraining() {
+                if (this.isRunning) return;
+                
+                this.isRunning = true;
+                document.getElementById('startBtn').classList.add('hidden');
+                document.getElementById('stopBtn').classList.remove('hidden');
+                document.getElementById('resultLog').classList.remove('hidden');
+                
+                const interval = document.getElementById('interval').value * 1000;
+                this.playNumber(); // 立即播放第一个数字
+                
+                this.intervalId = setInterval(() => {
+                    this.playNumber();
+                }, interval);
+            },
+            
+            stopTraining() {
+                clearInterval(this.intervalId);
+                this.isRunning = false;
+                document.getElementById('startBtn').classList.remove('hidden');
+                document.getElementById('stopBtn').classList.add('hidden');
+            },
+            
+            playNumber() {
+                const num = this.generateNumber();
+                this.speakNumber(num);
+                this.logNumber(num);
+            },
+            
+            generateNumber() {
+                let num;
+                switch(this.currentMode) {
+                    case 100:
+                        num = Math.floor(Math.random() * 100) + 1;
+                        break;
+                    case 1000:
+                        // 增加百位数的概率
+                        num = Math.random() > 0.3 ? 
+                            Math.floor(Math.random() * 900) + 101 : 
+                            Math.floor(Math.random() * 100) + 1;
+                        break;
+                    case 100000:
+                        // 分层概率：50%千位数，30%万位数，20%百位数及以下
+                        const rand = Math.random();
+                        if (rand < 0.5) {
+                            num = Math.floor(Math.random() * 9000) + 1001;
+                        } else if (rand < 0.8) {
+                            num = Math.floor(Math.random() * 90000) + 10001;
+                        } else {
+                            num = Math.floor(Math.random() * 1000) + 1;
+                        }
+                        break;
+                }
+                return num;
+            },
+            
+            speakNumber(num) {
+                const utterance = new SpeechSynthesisUtterance();
+                utterance.text = this.numberToWords(num);
+                utterance.rate = speechConfig.rate;
+                utterance.pitch = speechConfig.pitch;
+                utterance.voice = speechConfig.voice;
+                
+                window.speechSynthesis.speak(utterance);
+            },
+            
+            logNumber(num) {
+                this.numbersHistory.unshift(num);
+                if (this.numbersHistory.length > 10) {
+                    this.numbersHistory.pop();
+                }
+                
+                const logList = document.getElementById('logList');
+                logList.innerHTML = '';
+                
+                this.numbersHistory.forEach((num, index) => {
+                    const li = document.createElement('li');
+                    li.textContent = `${index + 1}. ${this.formatNumber(num)} (${this.numberToWords(num)})`;
+                    logList.appendChild(li);
+                });
+            },
+            
+            numberToWords(num) {
+                // 精简版数字转英文单词（实际使用需完整实现）
+                if (num === 100000) return "one hundred thousand";
+                if (num >= 1000) {
+                    const thousands = Math.floor(num / 1000);
+                    const remainder = num % 1000;
+                    return `${this.numberToWords(thousands)} thousand${remainder ? ' ' + this.numberToWords(remainder) : ''}`;
+                }
+                if (num >= 100) {
+                    const hundreds = Math.floor(num / 100);
+                    const remainder = num % 100;
+                    return `${this.numberToWords(hundreds)} hundred${remainder ? ' and ' + this.numberToWords(remainder) : ''}`;
+                }
+                if (num >= 20) {
+                    const tens = Math.floor(num / 10);
+                    const units = num % 10;
+                    const tensWords = ['twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+                    return `${tensWords[tens - 2]}${units ? '-' + this.numberToWords(units) : ''}`;
+                }
+                const words = [
+                    'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+                    'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 
+                    'seventeen', 'eighteen', 'nineteen'
+                ];
+                return words[num - 1];
+            },
+            
+            formatNumber(num) {
+                return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+            }
+        };
+
+        // 初始化训练系统
+        trainer.init();
+    </script>
+</body>
+</html>
